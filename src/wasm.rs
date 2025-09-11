@@ -1,6 +1,6 @@
+use crate::string_strategy::UnicodeStringStrategy;
+use crate::symspell::{SymSpell, SymSpellBuilder, Verbosity};
 use std::str;
-use string_strategy::UnicodeStringStrategy;
-use symspell::{SymSpell, SymSpellBuilder, Verbosity};
 use wasm_bindgen::prelude::*;
 
 #[derive(Serialize, Deserialize)]
@@ -42,7 +42,7 @@ impl JSSymSpell {
     pub fn new(parameters: &JsValue) -> Result<JSSymSpell, JsValue> {
         let params: InitParams;
 
-        if let Ok(i) = parameters.into_serde() {
+        if let Ok(i) = serde_wasm_bindgen::from_value(parameters.clone()) {
             params = i;
         } else {
             return Err(JsValue::from("Unable to parse arguments"));
@@ -53,7 +53,8 @@ impl JSSymSpell {
                 .max_dictionary_edit_distance(params.max_edit_distance as i64)
                 .prefix_length(params.prefix_length as i64)
                 .count_threshold(params.count_threshold as i64)
-                .build()?,
+                .build()
+                .map_err(|e| JsValue::from(format!("Failed to build SymSpell: {:?}", e)))?,
         })
     }
 
@@ -61,7 +62,7 @@ impl JSSymSpell {
     // browsers.
     pub fn load_dictionary(&mut self, input: &[u8], args: &JsValue) -> Result<(), JsValue> {
         let params: DictParams;
-        if let Ok(i) = args.into_serde() {
+        if let Ok(i) = serde_wasm_bindgen::from_value(args.clone()) {
             params = i;
         } else {
             return Err(JsValue::from("Unable to parse arguments"));
@@ -89,7 +90,7 @@ impl JSSymSpell {
     // browsers.
     pub fn load_bigram_dictionary(&mut self, input: &[u8], args: &JsValue) -> Result<(), JsValue> {
         let params: DictParams;
-        if let Ok(i) = args.into_serde() {
+        if let Ok(i) = serde_wasm_bindgen::from_value(args.clone()) {
             params = i;
         } else {
             return Err(JsValue::from("Unable to parse arguments"));
@@ -127,7 +128,7 @@ impl JSSymSpell {
                     distance: sugg.distance as i32,
                     count: sugg.count as i32,
                 };
-                JsValue::from_serde(&temp).unwrap()
+                serde_wasm_bindgen::to_value(&temp).unwrap()
             })
             .collect())
     }
@@ -157,7 +158,7 @@ impl JSSymSpell {
                     distance: sugg.distance as i32,
                     count: sugg.count as i32,
                 };
-                JsValue::from_serde(&temp).unwrap()
+                serde_wasm_bindgen::to_value(&temp).unwrap()
             })
             .collect())
     }
@@ -176,7 +177,7 @@ impl JSSymSpell {
             prob_log_sum: seg.prob_log_sum as f32,
         };
 
-        Ok(JsValue::from_serde(&res).unwrap())
+        Ok(serde_wasm_bindgen::to_value(&res).unwrap())
     }
 }
 
