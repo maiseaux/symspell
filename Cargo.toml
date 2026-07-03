@@ -12,12 +12,18 @@ rust-version = '1.85'
 edition = "2024"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
 strsim = "^0.11"
 derive_builder = "^0.20"
 serde = { version = "1.0", features = ["derive"], optional = true }
+
+[features]
+# Enables Serialize/Deserialize derives on SymSpell and its component types,
+# so a constructed dictionary can be serialized (e.g. for a prebuilt/embedded
+# dictionary that is deserialized at startup instead of rebuilt).
+serde = ["dep:serde"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 unidecode = "^0.3"

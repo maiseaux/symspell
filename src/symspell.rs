@@ -1,7 +1,7 @@
 use std::cmp;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::collections::hash_map::DefaultHasher;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader};
@@ -43,8 +43,16 @@ pub struct SymSpell<T: StringStrategy> {
 
     #[builder(default = "0", setter(skip))]
     max_length: i64,
+    /// Maps the hash of a delete-variant to the indices (into `words_list`) of
+    /// the dictionary terms that produce it. Storing indices instead of copies
+    /// of the term keeps the map compact (one `u32` per bucket entry instead of
+    /// a `Box<str>`), which shrinks the serialized/prebuilt dictionary and cuts
+    /// the number of allocations on load.
     #[builder(default = "HashMap::new()", setter(skip))]
-    deletes: HashMap<u64, Vec<Box<str>>>,
+    deletes: HashMap<u64, Vec<u32>>,
+    /// Dictionary terms indexed by insertion order; `deletes` values point here.
+    #[builder(default = "Vec::new()", setter(skip))]
+    words_list: Vec<Box<str>>,
     #[builder(default = "HashMap::new()", setter(skip))]
     words: HashMap<Box<str>, i64>,
     #[builder(default = "HashMap::new()", setter(skip))]
@@ -277,7 +285,8 @@ impl<T: StringStrategy> SymSpell<T> {
             if self.deletes.contains_key(&self.get_string_hash(candidate)) {
                 let dict_suggestions = &self.deletes[&self.get_string_hash(candidate)];
 
-                for suggestion in dict_suggestions {
+                for &suggestion_idx in dict_suggestions {
+                    let suggestion = &self.words_list[suggestion_idx as usize];
                     let suggestion_len = self.string_strategy.len(suggestion) as i64;
 
                     if suggestion.as_ref() == input {
@@ -783,6 +792,10 @@ impl<T: StringStrategy> SymSpell<T> {
 
         let key_clone = key.clone().into().into_boxed_str();
 
+        // Index this term will occupy in `words_list`. Assigned only for new
+        // terms; the `Some` arm returns early, so it is always initialized by
+        // the time the delete-variant loop below runs.
+        let word_idx: u32;
         match self.words.get(key.as_ref()) {
             Some(i) => {
                 let updated_count = if i64::MAX - i > count {
@@ -794,6 +807,8 @@ impl<T: StringStrategy> SymSpell<T> {
                 return false;
             }
             None => {
+                word_idx = self.words_list.len() as u32;
+                self.words_list.push(key_clone.clone());
                 self.words.insert(key_clone, count);
             }
         }
@@ -811,8 +826,8 @@ impl<T: StringStrategy> SymSpell<T> {
 
             self.deletes
                 .entry(delete_hash)
-                .and_modify(|e| e.push(key.clone().into().into_boxed_str()))
-                .or_insert_with(|| vec![key.clone().into().into_boxed_str()]);
+                .and_modify(|e| e.push(word_idx))
+                .or_insert_with(|| vec![word_idx]);
         }
 
         true
